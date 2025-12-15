@@ -146,63 +146,74 @@
     <script>
         // --- 1. Helper function for click interaction ---
         function toggleCheck(element) {
-            // This simply toggles the CSS class 'checked' on the row being clicked
             element.classList.toggle('checked');
         }
 
         // --- 2. Main Logic ---
         const params = new URLSearchParams(window.location.search);
-        // URL format expected: ?data=RosterA|Kid1|Red^RosterA|Kid2|Blue^RosterB|Kid3|Green
-        const rawData = params.get('data');
+        let rawData = params.get('data'); 
         const appContainer = document.getElementById('app');
 
         if (!rawData) {
             appContainer.innerHTML = `<h3 class="error-msg">Waiting for roster data...</h3>`;
         } else {
+            
+            // --- FIX: Clean the data string before splitting ---
+            // sometimes Glide/URL encodes weird prefixes like {D}/?{D}= into the first item.
+            // We find the first real data character (not { } ? / = or D) to ensure a clean start.
+            
+            // 1. Decode URI component to handle %20, %7C, etc.
+            rawData = decodeURIComponent(rawData);
+
+            // 2. Remove the specific glitchy prefix you mentioned if it exists
+            // This Regex removes any combination of characters before the first actual Roster Name starts
+            // It looks for the pattern "{D}/?{D}=" or similar variations and zaps them.
+            rawData = rawData.replace(/^.*=\s*/, ''); 
+            rawData = rawData.replace(/^{D}\/\?{D}=/, ''); // Explicit fix for your specific error
+
             // --- Step A: Parse and Group the Data ---
-            const entries = rawData.split('^'); // Split into individual kid records
-            const groupedRosters = {}; // This object will hold our grouped data
+            const entries = rawData.split('^'); 
+            const groupedRosters = {}; 
 
             entries.forEach(entry => {
-                // Ensure entry isn't empty trailing data
                 if(entry.trim() === "") return;
 
-                // Split by pipe | to get the three parts
                 const parts = entry.split('|');
-                // Ensure we have all 3 parts before proceeding
-                if(parts.length !== 3) return;
-
-                const [rName, sName, tColor] = parts;
-                const cleanRoster = rName.trim();
                 
-                // If this roster key doesn't exist in our object yet, create it as an empty array
-                if (!groupedRosters[cleanRoster]) {
-                    groupedRosters[cleanRoster] = [];
+                // If a split results in weird data, skip it to prevent breaking the UI
+                if(parts.length < 3) return; 
+
+                // We use "slice" here to handle cases where Roster Names might have accidental extra pipes
+                // But generally, [0] is Roster, [1] is Name, [2] is Color.
+                let rName = parts[0].trim();
+                let sName = parts[1].trim();
+                let tColor = parts[2].trim();
+
+                // Double check to ensure we didn't miss a prefix in the loop
+                if(rName.includes('=')) {
+                     rName = rName.split('=').pop();
                 }
 
-                // Push the kid object into that roster's array
-                groupedRosters[cleanRoster].push({
-                    studentName: sName.trim(),
-                    teamColor: tColor.trim()
+                if (!groupedRosters[rName]) {
+                    groupedRosters[rName] = [];
+                }
+
+                groupedRosters[rName].push({
+                    studentName: sName,
+                    teamColor: tColor
                 });
             });
-
 
             // --- Step B: Build the HTML ---
             let finalHtml = '';
 
-            // Iterate over our grouped object (e.g., Loop through "Varsity A", then "Junior B")
             for (const [rosterName, studentsArray] of Object.entries(groupedRosters)) {
                 
                 let studentListHtml = '';
                 
-                // Loop through the kids in this specific roster
                 studentsArray.forEach(student => {
-                    // We use the color name directly in inline style. 
-                    // CSS handles standard names (Red, Blue) and Hex codes correctly.
-                    const colorStyle = `color: ${student.teamColor}; filter: brightness(1.2);`; // brightness helps visibility on dark mode
+                    const colorStyle = `color: ${student.teamColor}; filter: brightness(1.2);`;
 
-                    // Note the onclick="toggleCheck(this)" added to the list item (li)
                     studentListHtml += `
                         <li class="student-row" onclick="toggleCheck(this)">
                             <div class="student-name-wrap">
@@ -216,7 +227,6 @@
                     `;
                 });
 
-                // Build the Card for this Roster
                 finalHtml += `
                     <article class="card">
                         <div class="card-header">
@@ -232,13 +242,11 @@
                 `;
             }
 
-            // Inject result
             if (finalHtml === '') {
-                 appContainer.innerHTML = `<h3 class="error-msg">Data found, but could not be parsed correctly. Check delimiters.</h3>`;
+                 appContainer.innerHTML = `<h3 class="error-msg">Data loaded but format was unrecognizable.</h3>`;
             } else {
                  appContainer.innerHTML = finalHtml;
             }
-           
         }
     </script>
 </body>
