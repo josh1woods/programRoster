@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Roster Dashboard</title>
+    <style>
+        /* --- Dark Mode Core Variables --- */
+        :root {
+            --bg-body: #171717;
+            --bg-card: #262626;
+            --bg-header: #333333;
+            --text-main: #ffffff;
+            --text-muted: #a3a3a3;
+            --border-color: #404040;
+            --accent-check: #22c55e; /* Green for checkmark */
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            padding: 2rem;
+            line-height: 1.5;
+        }
+
+        header {
+            max-width: 1200px;
+            margin: 0 auto 2rem auto;
+        }
+        h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+
+        /* --- Grid & Card Styling --- */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-header {
+            padding: 1rem 1.25rem;
+            background-color: var(--bg-header);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .roster-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .roster-count {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .card-body { padding: 0; flex-grow: 1; }
+        .student-list { list-style: none; }
+
+        /* --- Interactive Student Row Styling --- */
+        .student-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer; /* Indicates clickability */
+            transition: background-color 0.2s ease, opacity 0.2s ease;
+            position: relative;
+        }
+
+        .student-row:last-child { border-bottom: none; }
+        .student-row:hover { background-color: rgba(255,255,255, 0.05); }
+
+        .student-name-wrap {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* The Checkmark Indicator (Hidden by default) */
+        .check-indicator {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            color: transparent;
+        }
+
+        /* --- Checked State --- */
+        /* When the row has the 'checked' class applied by JS */
+        .student-row.checked {
+            background-color: rgba(34, 197, 94, 0.1); /* Slight green tint */
+        }
+
+        .student-row.checked .student-name {
+            opacity: 0.6;
+            text-decoration: line-through; /* Optional: cross out name */
+        }
+
+        .student-row.checked .check-indicator {
+            background-color: var(--accent-check);
+            border-color: var(--accent-check);
+            color: white; /* Shows the checkmark SVG */
+        }
+
+        /* --- Team Color Badge --- */
+        .color-badge {
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.875rem;
+            letter-spacing: 0.05em;
+            /* The actual color will be set via inline styles by JS */
+        }
+
+        .error-msg { text-align: center; color: #fca5a5; margin-top: 2rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Attendance Rosters</h1>
+    </header>
+
+    <main class="dashboard-grid" id="app">
+        </main>
+
+    <script>
+        // --- 1. Helper function for click interaction ---
+        function toggleCheck(element) {
+            // This simply toggles the CSS class 'checked' on the row being clicked
+            element.classList.toggle('checked');
+        }
+
+        // --- 2. Main Logic ---
+        const params = new URLSearchParams(window.location.search);
+        // URL format expected: ?data=RosterA|Kid1|Red^RosterA|Kid2|Blue^RosterB|Kid3|Green
+        const rawData = params.get('data');
+        const appContainer = document.getElementById('app');
+
+        if (!rawData) {
+            appContainer.innerHTML = `<h3 class="error-msg">Waiting for roster data...</h3>`;
+        } else {
+            // --- Step A: Parse and Group the Data ---
+            const entries = rawData.split('^'); // Split into individual kid records
+            const groupedRosters = {}; // This object will hold our grouped data
+
+            entries.forEach(entry => {
+                // Ensure entry isn't empty trailing data
+                if(entry.trim() === "") return;
+
+                // Split by pipe | to get the three parts
+                const parts = entry.split('|');
+                // Ensure we have all 3 parts before proceeding
+                if(parts.length !== 3) return;
+
+                const [rName, sName, tColor] = parts;
+                const cleanRoster = rName.trim();
+                
+                // If this roster key doesn't exist in our object yet, create it as an empty array
+                if (!groupedRosters[cleanRoster]) {
+                    groupedRosters[cleanRoster] = [];
+                }
+
+                // Push the kid object into that roster's array
+                groupedRosters[cleanRoster].push({
+                    studentName: sName.trim(),
+                    teamColor: tColor.trim()
+                });
+            });
+
+
+            // --- Step B: Build the HTML ---
+            let finalHtml = '';
+
+            // Iterate over our grouped object (e.g., Loop through "Varsity A", then "Junior B")
+            for (const [rosterName, studentsArray] of Object.entries(groupedRosters)) {
+                
+                let studentListHtml = '';
+                
+                // Loop through the kids in this specific roster
+                studentsArray.forEach(student => {
+                    // We use the color name directly in inline style. 
+                    // CSS handles standard names (Red, Blue) and Hex codes correctly.
+                    const colorStyle = `color: ${student.teamColor}; filter: brightness(1.2);`; // brightness helps visibility on dark mode
+
+                    // Note the onclick="toggleCheck(this)" added to the list item (li)
+                    studentListHtml += `
+                        <li class="student-row" onclick="toggleCheck(this)">
+                            <div class="student-name-wrap">
+                                <div class="check-indicator">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                </div>
+                                <span class="student-name">${student.studentName}</span>
+                            </div>
+                            <span class="color-badge" style="${colorStyle}">${student.teamColor}</span>
+                        </li>
+                    `;
+                });
+
+                // Build the Card for this Roster
+                finalHtml += `
+                    <article class="card">
+                        <div class="card-header">
+                            <h2 class="roster-title">${rosterName}</h2>
+                            <div class="roster-count">${studentsArray.length} Students</div>
+                        </div>
+                        <div class="card-body">
+                            <ul class="student-list">
+                                ${studentListHtml}
+                            </ul>
+                        </div>
+                    </article>
+                `;
+            }
+
+            // Inject result
+            if (finalHtml === '') {
+                 appContainer.innerHTML = `<h3 class="error-msg">Data found, but could not be parsed correctly. Check delimiters.</h3>`;
+            } else {
+                 appContainer.innerHTML = finalHtml;
+            }
+           
+        }
+    </script>
+</body>
+</html>
